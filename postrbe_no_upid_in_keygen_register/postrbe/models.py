@@ -1,0 +1,154 @@
+"""Operation-count models for large-parameter planning.
+
+These estimates are not a replacement for real benchmarks. They make the large
+N cases measurable without allocating terabytes of dense matrices.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from .params import RBEParams
+
+
+@dataclass
+class OpCount:
+    scheme: str
+    N: int
+    B: int
+    n: int
+    m: int
+    r: int
+    t: int
+    q_bits: int
+    d: int
+    sigma_inf: int
+    short_min: int
+    short_max: int
+    message_bits: int
+    setup_rand_entries: int
+    setup_muladds: int
+    keygen_muladds: int
+    register_muladds: int
+    encrypt_muladds: int
+    update_muladds: int
+    # Decryption is two vector-matrix products plus one vector addition:
+    #   c2 X_id:      (1 x t) @ (t x t) -> 1 x t, cost t^2 scalar mul-adds
+    #   c1 L:         (1 x m) @ (m x t) -> 1 x t, cost m*t scalar mul-adds
+    #   vector add:   (1 x t) + (1 x t), cost t additions
+    # It is NOT a dense matrix-matrix product of cost t^3.
+    decrypt_c2_xid_muladds: int
+    decrypt_c1_opening_muladds: int
+    decrypt_vector_adds: int
+    decrypt_muladds: int
+    decrypt_update_muladds: int
+    ciphertext_entries: int
+    ciphertext_bytes: int
+    sk_entries: int
+    sk_bytes: int
+    upid_entries: int
+    upid_bytes: int
+
+
+def _base_fields(p: RBEParams):
+    eb = p.element_bytes
+    ct_entries = p.m + int(p.t)
+    ct_bytes = ct_entries * eb + p.message_bytes
+    return dict(
+        q_bits=p.q_bits,
+        d=p.keep_bits,
+        sigma_inf=p.sigma_inf,
+        short_min=p.short_min,
+        short_max=p.short_max,
+        message_bits=p.message_bits,
+        ciphertext_entries=ct_entries,
+        ciphertext_bytes=ct_bytes,
+        sk_entries=int(p.t) * int(p.t),
+        sk_bytes=int(p.t) * int(p.t) * eb,
+    )
+
+
+def opcount_postrbe(params: RBEParams) -> OpCount:
+    p = params.with_t_for_scheme("postrbe")
+    B = p.B
+    eb = p.element_bytes
+    # Dense schoolbook multiply-add estimates.
+    setup_rand_entries = B * (p.n * p.m + p.n * p.t)
+    setup_muladds = 0  # generating A and U only in the prototype model
+    # Revised convention: KeyGen excludes up_id / registration upload generation.
+    # Register also excludes up_id generation; it measures only curator-side update
+    # after receiving (pk, up_id).
+    keygen = p.n * p.t * p.t
+    register = (B - 1) * p.m * p.t + p.n * p.t
+    encrypt = p.n * p.m + p.n * p.t + p.n * p.t
+    update = 0
+    decrypt_c2_xid = int(p.t) * int(p.t)
+    decrypt_c1_opening = int(p.m) * int(p.t)
+    decrypt_vector_add = int(p.t)
+    decrypt = decrypt_c2_xid + decrypt_c1_opening + decrypt_vector_add
+    upid_entries = p.n * p.t + (B - 1) * p.m * p.t
+    return OpCount(
+        "PostRBE",
+        p.N,
+        B,
+        p.n,
+        p.m,
+        p.r,
+        int(p.t),
+        setup_rand_entries=setup_rand_entries,
+        setup_muladds=setup_muladds,
+        keygen_muladds=keygen,
+        register_muladds=register,
+        encrypt_muladds=encrypt,
+        update_muladds=update,
+        decrypt_c2_xid_muladds=decrypt_c2_xid,
+        decrypt_c1_opening_muladds=decrypt_c1_opening,
+        decrypt_vector_adds=decrypt_vector_add,
+        decrypt_muladds=decrypt,
+        decrypt_update_muladds=decrypt + update,
+        upid_entries=upid_entries,
+        upid_bytes=upid_entries * eb,
+        **_base_fields(p),
+    )
+
+
+def opcount_postrbe_star(params: RBEParams) -> OpCount:
+    p = params.with_t_for_scheme("star")
+    B = p.B
+    eb = p.element_bytes
+    setup_rand_entries = B * (p.n * p.m + p.n * p.r + p.r * p.t)
+    setup_muladds = B * p.n * p.r * p.t  # U_j = V_j Q_j
+    # Revised convention: KeyGen excludes up_id / registration upload generation.
+    # Register also excludes up_id generation; it measures only curator-side update
+    # after receiving (pk, up_id). For PostRBE*, the curator still computes P_i,pos * up_id.
+    keygen = p.n * p.t * p.t
+    register = (B - 1) * p.m * p.r * p.t + p.n * p.t
+    encrypt = p.n * p.m + p.n * p.t + p.n * p.t
+    update = 0
+    decrypt_c2_xid = int(p.t) * int(p.t)
+    decrypt_c1_opening = int(p.m) * int(p.t)
+    decrypt_vector_add = int(p.t)
+    decrypt = decrypt_c2_xid + decrypt_c1_opening + decrypt_vector_add
+    upid_entries = p.n * p.t + p.r * p.t
+    return OpCount(
+        "PostRBE*",
+        p.N,
+        B,
+        p.n,
+        p.m,
+        p.r,
+        int(p.t),
+        setup_rand_entries=setup_rand_entries,
+        setup_muladds=setup_muladds,
+        keygen_muladds=keygen,
+        register_muladds=register,
+        encrypt_muladds=encrypt,
+        update_muladds=update,
+        decrypt_c2_xid_muladds=decrypt_c2_xid,
+        decrypt_c1_opening_muladds=decrypt_c1_opening,
+        decrypt_vector_adds=decrypt_vector_add,
+        decrypt_muladds=decrypt,
+        decrypt_update_muladds=decrypt + update,
+        upid_entries=upid_entries,
+        upid_bytes=upid_entries * eb,
+        **_base_fields(p),
+    )
