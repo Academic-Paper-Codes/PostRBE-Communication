@@ -157,6 +157,27 @@ ciphertext fields (`c1`, `c2`, reconciliation hint, nonce, and authenticated
 and the final byte-for-byte equality result. This is the recommended command
 when demonstrating encryption and decryption to a reviewer.
 
+To preserve the complete encryption/decryption evidence while still displaying
+it in the terminal, save the demo output to a text file. On Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force results_encryption_demo | Out-Null
+python scripts/run_encryption_demo.py 2>&1 | Tee-Object -FilePath results_encryption_demo/encryption_decryption_output.txt
+```
+
+On Linux:
+
+```bash
+mkdir -p results_encryption_demo
+python scripts/run_encryption_demo.py 2>&1 | tee results_encryption_demo/encryption_decryption_output.txt
+```
+
+The saved `results_encryption_demo/encryption_decryption_output.txt` contains
+the original plaintext, every ciphertext field, the recovered plaintext, one
+`Original plaintext == Decrypted plaintext: True` result for each scheme, and
+the final `ENCRYPTION/DECRYPTION DEMO PASS` line. This text file is the saved
+functional evidence.
+
 Complete deterministic tests (normally under a few minutes):
 
 ```powershell
